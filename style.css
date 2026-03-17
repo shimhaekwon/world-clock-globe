@@ -223,6 +223,12 @@ footer {
     font-size: 0.85rem;
 }
 
+.network-warning {
+    color: #ff9800;
+    font-size: 0.75rem;
+    margin-left: auto;
+}
+
 /* Loading State */
 .loading {
     opacity: 0.5;
