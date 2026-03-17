@@ -26,7 +26,10 @@ function initGlobe() {
         .backgroundImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/night-sky.png')
         .width(globeContainer.clientWidth)
         .height(globeContainer.clientHeight)
-        .enablePointerInteraction(true);
+        .enablePointerInteraction(true)
+        
+        // Graticules (lat/lng grid lines)
+        .showGraticules(true);
 
     // Set autoRotate via controls
     globe.controls().autoRotate = autoRotate;

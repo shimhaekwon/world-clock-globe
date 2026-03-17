@@ -47,18 +47,51 @@ main {
 #globe-container {
     width: 100%;
     height: 100%;
+    position: relative;
+    z-index: 1;
+}
+
+/* Center Crosshair */
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 50;
+}
+
+.crosshair-h, .crosshair-v {
+    position: absolute;
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.crosshair-h {
+    width: 40px;
+    height: 1px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.crosshair-v {
+    width: 1px;
+    height: 40px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 /* Information Card */
 #info-card {
     position: absolute;
-    top: 80px;
+    top: 60px;
     right: 20px;
-    width: 280px;
+    width: 340px;
     background: rgba(20, 20, 40, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    padding: 1rem;
+    padding: 0.75rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(10px);
     z-index: 100;
@@ -81,7 +114,7 @@ main {
 }
 
 .card-header span {
-    font-size: 1.1rem;
+    font-size: 1rem;
     font-weight: 600;
     color: #64b5f6;
 }
@@ -103,7 +136,7 @@ main {
 .card-body {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.35rem;
 }
 
 .info-row {
@@ -114,7 +147,7 @@ main {
 
 .info-row .label {
     color: #888;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
 }
 
 .info-row span:last-child {
