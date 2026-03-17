@@ -438,9 +438,9 @@ function startAutoRotateUpdatesV2(intervalMs = 1000) {
 }
 
 // Original function preserved for backward compatibility
-// Start auto-rotate location updates (every 5 seconds)
+// Start auto-rotate location updates (every 1 second)
 function startAutoRotateUpdates() {
-    startAutoRotateUpdatesV2(5000);  // 5초 (기존 호환)
+    startAutoRotateUpdatesV2(1000);  // 1초
 }
 
 // Stop auto-rotate location updates
