@@ -1,0 +1,18 @@
+{
+  "name": "World Clock Globe",
+  "short_name": "WorldClock",
+  "description": "3D globe showing time and weather for any location",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0a1a",
+  "theme_color": "#0a0a1a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

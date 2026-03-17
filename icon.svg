@@ -1,0 +1,5 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>
+  <circle cx='256' cy='256' r='240' fill='#0a0a1a'/>
+  <circle cx='256' cy='256' r='200' fill='#1a237e'/>
+  <ellipse cx='256' cy='256' rx='180' ry='60' fill='#64b5f6' opacity='0.5'/>
+</svg>
