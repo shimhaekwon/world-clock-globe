@@ -72,7 +72,11 @@ export async function getWeather(latitude, longitude) {
  * @returns {Promise<Object>} Location data
  */
 export async function getLocationInfo(latitude, longitude) {
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`;
+    // Get browser language (default to English)
+    const browserLang = navigator.language || navigator.userLanguage || 'en';
+    const lang = browserLang.startsWith('ko') ? 'ko' : 'en';
+    
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=${lang}`;
     
     try {
         const response = await fetch(url);
