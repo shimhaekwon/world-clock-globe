@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Clock Globe</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Importmap for ES Modules (only for local modules) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "./api.js": "./api.js"
+        }
+    }
+    </script>
+    
+    <!-- Load globe.gl via script tag (includes Three.js) -->
+    <script src="https://cdn.jsdelivr.net/npm/globe.gl@2.45.1/dist/globe.gl.min.js"></script>
+</head>
+<body>
+    <header>
+        <h1>World Clock Globe</h1>
+    </header>
+
+    <main>
+        <div id="globe-container"></div>
+        
+        <!-- Information Card -->
+        <div id="info-card" class="hidden">
+            <div class="card-header">
+                <span id="location-name">--</span>
+                <button id="close-card">&times;</button>
+            </div>
+            <div class="card-body">
+                <div class="info-row">
+                    <span class="label">Date</span>
+                    <span id="current-date">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Time</span>
+                    <span id="current-time">--:--:--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Temperature</span>
+                    <span id="temperature">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Weather</span>
+                    <span id="weather">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Latitude</span>
+                    <span id="latitude">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Longitude</span>
+                    <span id="longitude">--</span>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="controls">
+            <button id="auto-rotate-btn">Auto Rotate: OFF</button>
+            <span class="hint">Drag to rotate | Scroll to zoom</span>
+        </div>
+    </footer>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
