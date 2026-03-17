@@ -9,13 +9,13 @@ import { getWeather, getLocationInfo } from './api.js';
 let globe = null;
 let autoRotate = false;
 let debounceTimer = null;
+let autoRotateUpdateTimer = null;
 let currentLocation = { lat: 37.5, lng: 127.0, timezone: 'Asia/Seoul' };
 let timeUpdateInterval = null;
 
 // DOM Elements
 const globeContainer = document.getElementById('globe-container');
 const infoCard = document.getElementById('info-card');
-const closeCardBtn = document.getElementById('close-card');
 const autoRotateBtn = document.getElementById('auto-rotate-btn');
 
 // Initialize Globe
@@ -33,7 +33,7 @@ function initGlobe() {
 
     // Set autoRotate via controls
     globe.controls().autoRotate = autoRotate;
-    globe.controls().autoRotateSpeed = 0.5;
+    globe.controls().autoRotateSpeed = 0.1;  // 1/5 of original (0.5 → 0.1)
 
     // Set initial view (Korea)
     globe.pointOfView({ lat: 37.5, lng: 127.0 }, 1000);
@@ -46,19 +46,22 @@ function initGlobe() {
     });
 }
 
-// Handle rotation/drag end - Debounced
+// Handle rotation/drag - Real-time coordinates + Debounced API
 function handleGlobeChange() {
-    clearTimeout(debounceTimer);
-    
-    debounceTimer = setTimeout(() => {
-        // Get the current center point of the view
-        const center = globe.pointOfView();
-        if (center) {
+    const center = globe.pointOfView();
+    if (center) {
+        // Update coordinates immediately (real-time)
+        document.getElementById('latitude').textContent = center.lat.toFixed(4);
+        document.getElementById('longitude').textContent = center.lng.toFixed(4);
+        
+        // Debounced API call for city/weather (when drag stops)
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
             currentLocation.lat = center.lat;
             currentLocation.lng = center.lng;
             updateLocationInfo(center.lat, center.lng);
-        }
-    }, 800); // Wait 800ms after user stops dragging
+        }, 800);
+    }
 }
 
 // Attach event listeners for rotation detection
@@ -75,17 +78,12 @@ function attachGlobeEvents() {
 
 // Update location information
 async function updateLocationInfo(lat, lng) {
-    // Show loading state
-    showInfoCard();
-    updateCardData({
-        city: 'Loading...',
-        temperature: '--',
-        weather: '--',
-        latitude: lat.toFixed(4),
-        longitude: lng.toFixed(4),
-        date: '--',
-        time: '--:--:--'
-    });
+    // Update coordinates
+    document.getElementById('latitude').textContent = lat.toFixed(4);
+    document.getElementById('longitude').textContent = lng.toFixed(4);
+
+    // Keep time updating during rotation
+    startTimeUpdates();
 
     try {
         // Fetch location and weather in parallel
@@ -105,16 +103,8 @@ async function updateLocationInfo(lat, lng) {
             longitude: lng.toFixed(4)
         });
 
-        // Start time updates for this location
-        startTimeUpdates();
-
     } catch (error) {
         console.error('Error updating location:', error);
-        updateCardData({
-            city: 'Error',
-            temperature: '--',
-            weather: '--'
-        });
     }
 }
 
@@ -187,9 +177,46 @@ function toggleAutoRotate() {
     if (autoRotate) {
         autoRotateBtn.textContent = 'Auto Rotate: ON';
         autoRotateBtn.classList.add('active');
+        
+        // Start auto-rotate updates every 5 seconds
+        startAutoRotateUpdates();
     } else {
         autoRotateBtn.textContent = 'Auto Rotate: OFF';
         autoRotateBtn.classList.remove('active');
+        
+        // Stop auto-rotate updates
+        stopAutoRotateUpdates();
+    }
+}
+
+// Start auto-rotate location updates (every 5 seconds)
+function startAutoRotateUpdates() {
+    stopAutoRotateUpdates();
+    
+    // Update immediately
+    updateLocationForAutoRotate();
+    
+    // Then every 5 seconds
+    autoRotateUpdateTimer = setInterval(() => {
+        updateLocationForAutoRotate();
+    }, 5000);
+}
+
+// Stop auto-rotate location updates
+function stopAutoRotateUpdates() {
+    if (autoRotateUpdateTimer) {
+        clearInterval(autoRotateUpdateTimer);
+        autoRotateUpdateTimer = null;
+    }
+}
+
+// Update location during auto-rotate
+function updateLocationForAutoRotate() {
+    const center = globe.pointOfView();
+    if (center) {
+        currentLocation.lat = center.lat;
+        currentLocation.lng = center.lng;
+        updateLocationInfo(center.lat, center.lng);
     }
 }
 
@@ -198,8 +225,25 @@ function setupEventListeners() {
     // Auto rotate button
     autoRotateBtn.addEventListener('click', toggleAutoRotate);
     
-    // Close card button
-    closeCardBtn.addEventListener('click', hideInfoCard);
+    // Toggle card button (expand/collapse)
+    const toggleCardBtn = document.getElementById('toggle-card');
+    if (toggleCardBtn) {
+        toggleCardBtn.addEventListener('click', toggleCard);
+    }
+}
+
+// Toggle card expand/collapse
+function toggleCard() {
+    const infoCard = document.getElementById('info-card');
+    const toggleBtn = document.getElementById('toggle-card');
+    
+    infoCard.classList.toggle('collapsed');
+    
+    if (infoCard.classList.contains('collapsed')) {
+        toggleBtn.textContent = '▶';
+    } else {
+        toggleBtn.textContent = '▼';
+    }
 }
 
 // Initialize application
