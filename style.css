@@ -229,6 +229,26 @@ footer {
     margin-left: auto;
 }
 
+/* Speed Control */
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+}
+
+#rotate-speed {
+    width: 80px;
+    cursor: pointer;
+}
+
+#speed-value {
+    min-width: 20px;
+    color: #64b5f6;
+    font-weight: 600;
+}
+
 /* Loading State */
 .loading {
     opacity: 0.5;
