@@ -8,7 +8,7 @@ import { getWeather, getLocationInfo } from './api.js';
 // State
 let globe = null;
 let autoRotate = false;
-let autoRotateSpeed = 5;  // 1-10, default 5
+let autoRotateSpeed = 0;  // 0-20, default 0 (0 = off)
 let debounceTimer = null;
 let autoRotateUpdateTimer = null;
 let currentLocation = { lat: 37.5, lng: 127.0, timezone: 'Asia/Seoul' };
@@ -20,7 +20,8 @@ let isDragging = false;  // For drag end detection (Feature 3)
 // DOM Elements
 const globeContainer = document.getElementById('globe-container');
 const infoCard = document.getElementById('info-card');
-const autoRotateBtn = document.getElementById('auto-rotate-btn');
+const speedSlider = document.getElementById('rotate-speed');
+const speedValue = document.getElementById('speed-value');
 
 // Initialize Globe
 function initGlobe() {
@@ -462,8 +463,31 @@ function updateLocationForAutoRotate() {
 
 // Event Listeners
 function setupEventListeners() {
-    // Auto rotate button (1 second interval)
-    autoRotateBtn.addEventListener('click', toggleAutoRotate);
+    // Speed slider (Rotation: 0 = off, 1-20 = speed)
+    const slider = document.getElementById('rotate-speed');
+    const speedDisplay = document.getElementById('speed-value');
+    
+    if (slider) {
+        slider.addEventListener('input', function() {
+            const speed = parseInt(this.value);
+            speedDisplay.textContent = speed;
+            
+            if (speed === 0) {
+                // Turn off auto-rotate
+                autoRotate = false;
+                globe.controls().autoRotate = false;
+                stopAutoRotateUpdates();
+            } else {
+                // Turn on auto-rotate with selected speed
+                autoRotate = true;
+                globe.controls().autoRotate = true;
+                globe.controls().autoRotateSpeed = speed * 0.1;
+                
+                // Start auto-rotate updates
+                startAutoRotateUpdates();
+            }
+        });
+    }
     
     // Toggle card button (expand/collapse)
     const toggleCardBtn = document.getElementById('toggle-card');
