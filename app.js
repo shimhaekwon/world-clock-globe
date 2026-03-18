@@ -438,9 +438,9 @@ function startAutoRotateUpdatesV2(intervalMs = 1000) {
 }
 
 // Original function preserved for backward compatibility
-// Start auto-rotate location updates (every 1 second)
+// Start auto-rotate location updates (every 2 seconds)
 function startAutoRotateUpdates() {
-    startAutoRotateUpdatesV2(1000);  // 1초
+    startAutoRotateUpdatesV2(2000);  // 2초
 }
 
 // Stop auto-rotate location updates
@@ -463,7 +463,7 @@ function updateLocationForAutoRotate() {
 
 // Event Listeners
 function setupEventListeners() {
-    // Speed slider (Rotation: 0 = off, 1-20 = speed)
+    // Speed slider (Rotation: 0 = off, 1-10 = speed)
     const slider = document.getElementById('rotate-speed');
     const speedDisplay = document.getElementById('speed-value');
     
@@ -481,7 +481,7 @@ function setupEventListeners() {
                 // Turn on auto-rotate with selected speed
                 autoRotate = true;
                 globe.controls().autoRotate = true;
-                globe.controls().autoRotateSpeed = speed * 0.1;
+                globe.controls().autoRotateSpeed = speed * 0.5;
                 
                 // Start auto-rotate updates
                 startAutoRotateUpdates();
@@ -493,6 +493,11 @@ function setupEventListeners() {
     const toggleCardBtn = document.getElementById('toggle-card');
     if (toggleCardBtn) {
         toggleCardBtn.addEventListener('click', toggleCard);
+    }
+    
+    // Initialize speed display to match slider value
+    if (speedSlider && speedValue) {
+        speedValue.textContent = speedSlider.value;
     }
 }
 
