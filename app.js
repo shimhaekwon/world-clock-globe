@@ -11,7 +11,7 @@ let autoRotate = false;
 let autoRotateSpeed = 0;  // 0-20, default 0 (0 = off)
 let debounceTimer = null;
 let autoRotateUpdateTimer = null;
-let currentLocation = { lat: 37.5, lng: 127.0, timezone: 'Asia/Seoul' };
+let currentLocation = detectInitialLocation();
 let timeUpdateInterval = null;
 let countriesGeoJSON = null;  // For country boundaries
 let admin1GeoJSON = null;     // States / provinces / metropolitan areas
@@ -21,6 +21,97 @@ let admin1Labels = [];
 let cityLabels = [];
 let currentZoomLevel = 'country';  // country, region, city
 let isDragging = false;  // For drag end detection (Feature 3)
+
+// Open the globe near the user's region by mapping their browser timezone to a representative city.
+// If we don't know the timezone, fall back to longitude derived from UTC offset.
+const TIMEZONE_TO_COORDS = {
+    // Asia
+    'Asia/Seoul': { lat: 37.5665, lng: 126.9780 },
+    'Asia/Tokyo': { lat: 35.6762, lng: 139.6503 },
+    'Asia/Shanghai': { lat: 31.2304, lng: 121.4737 },
+    'Asia/Hong_Kong': { lat: 22.3193, lng: 114.1694 },
+    'Asia/Taipei': { lat: 25.0330, lng: 121.5654 },
+    'Asia/Singapore': { lat: 1.3521, lng: 103.8198 },
+    'Asia/Bangkok': { lat: 13.7563, lng: 100.5018 },
+    'Asia/Manila': { lat: 14.5995, lng: 120.9842 },
+    'Asia/Jakarta': { lat: -6.2088, lng: 106.8456 },
+    'Asia/Kolkata': { lat: 28.6139, lng: 77.2090 },
+    'Asia/Calcutta': { lat: 28.6139, lng: 77.2090 },
+    'Asia/Dubai': { lat: 25.2048, lng: 55.2708 },
+    'Asia/Riyadh': { lat: 24.7136, lng: 46.6753 },
+    'Asia/Tehran': { lat: 35.6892, lng: 51.3890 },
+    'Asia/Karachi': { lat: 24.8607, lng: 67.0011 },
+    'Asia/Dhaka': { lat: 23.8103, lng: 90.4125 },
+    'Asia/Ho_Chi_Minh': { lat: 10.8231, lng: 106.6297 },
+    'Asia/Kuala_Lumpur': { lat: 3.1390, lng: 101.6869 },
+    'Asia/Vladivostok': { lat: 43.1198, lng: 131.8869 },
+    'Asia/Yekaterinburg': { lat: 56.8389, lng: 60.6057 },
+    // Europe
+    'Europe/London': { lat: 51.5074, lng: -0.1278 },
+    'Europe/Paris': { lat: 48.8566, lng: 2.3522 },
+    'Europe/Berlin': { lat: 52.5200, lng: 13.4050 },
+    'Europe/Madrid': { lat: 40.4168, lng: -3.7038 },
+    'Europe/Rome': { lat: 41.9028, lng: 12.4964 },
+    'Europe/Amsterdam': { lat: 52.3676, lng: 4.9041 },
+    'Europe/Brussels': { lat: 50.8503, lng: 4.3517 },
+    'Europe/Vienna': { lat: 48.2082, lng: 16.3738 },
+    'Europe/Zurich': { lat: 47.3769, lng: 8.5417 },
+    'Europe/Stockholm': { lat: 59.3293, lng: 18.0686 },
+    'Europe/Oslo': { lat: 59.9139, lng: 10.7522 },
+    'Europe/Copenhagen': { lat: 55.6761, lng: 12.5683 },
+    'Europe/Helsinki': { lat: 60.1699, lng: 24.9384 },
+    'Europe/Warsaw': { lat: 52.2297, lng: 21.0122 },
+    'Europe/Prague': { lat: 50.0755, lng: 14.4378 },
+    'Europe/Athens': { lat: 37.9838, lng: 23.7275 },
+    'Europe/Lisbon': { lat: 38.7223, lng: -9.1393 },
+    'Europe/Dublin': { lat: 53.3498, lng: -6.2603 },
+    'Europe/Moscow': { lat: 55.7558, lng: 37.6173 },
+    'Europe/Istanbul': { lat: 41.0082, lng: 28.9784 },
+    // Americas
+    'America/New_York': { lat: 40.7128, lng: -74.0060 },
+    'America/Chicago': { lat: 41.8781, lng: -87.6298 },
+    'America/Denver': { lat: 39.7392, lng: -104.9903 },
+    'America/Los_Angeles': { lat: 34.0522, lng: -118.2437 },
+    'America/Phoenix': { lat: 33.4484, lng: -112.0740 },
+    'America/Anchorage': { lat: 61.2181, lng: -149.9003 },
+    'America/Honolulu': { lat: 21.3069, lng: -157.8583 },
+    'America/Toronto': { lat: 43.6532, lng: -79.3832 },
+    'America/Vancouver': { lat: 49.2827, lng: -123.1207 },
+    'America/Mexico_City': { lat: 19.4326, lng: -99.1332 },
+    'America/Sao_Paulo': { lat: -23.5505, lng: -46.6333 },
+    'America/Argentina/Buenos_Aires': { lat: -34.6037, lng: -58.3816 },
+    'America/Buenos_Aires': { lat: -34.6037, lng: -58.3816 },
+    'America/Lima': { lat: -12.0464, lng: -77.0428 },
+    'America/Bogota': { lat: 4.7110, lng: -74.0721 },
+    'America/Santiago': { lat: -33.4489, lng: -70.6693 },
+    // Africa
+    'Africa/Cairo': { lat: 30.0444, lng: 31.2357 },
+    'Africa/Lagos': { lat: 6.5244, lng: 3.3792 },
+    'Africa/Johannesburg': { lat: -26.2041, lng: 28.0473 },
+    'Africa/Nairobi': { lat: -1.2921, lng: 36.8219 },
+    'Africa/Casablanca': { lat: 33.5731, lng: -7.5898 },
+    // Pacific / Oceania
+    'Australia/Sydney': { lat: -33.8688, lng: 151.2093 },
+    'Australia/Melbourne': { lat: -37.8136, lng: 144.9631 },
+    'Australia/Brisbane': { lat: -27.4698, lng: 153.0251 },
+    'Australia/Perth': { lat: -31.9505, lng: 115.8605 },
+    'Pacific/Auckland': { lat: -36.8485, lng: 174.7633 },
+    'Pacific/Fiji': { lat: -18.1248, lng: 178.4501 },
+    // UTC fallback
+    'UTC': { lat: 0, lng: 0 },
+    'Etc/UTC': { lat: 0, lng: 0 },
+};
+
+function detectInitialLocation() {
+    let tz = 'UTC';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) {}
+    const mapped = TIMEZONE_TO_COORDS[tz];
+    if (mapped) return { lat: mapped.lat, lng: mapped.lng, timezone: tz };
+    // Fallback: derive longitude from UTC offset (15° per hour), pick a temperate-ish latitude
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const lng = Math.max(-180, Math.min(180, (offsetMinutes / 60) * 15));
+    return { lat: 30, lng, timezone: tz };
+}
 
 // DOM Elements
 const globeContainer = document.getElementById('globe-container');
@@ -57,8 +148,8 @@ function initGlobe() {
     globe.controls().minDistance = 105;
     globe.controls().maxDistance = 600;
 
-    // Set initial view (Korea)
-    globe.pointOfView({ lat: 37.5, lng: 127.0 }, 1000);
+    // Open near the user's region (timezone-derived)
+    globe.pointOfView({ lat: currentLocation.lat, lng: currentLocation.lng }, 1000);
 
     // [diag] expose for browser console inspection
     window.globe = globe;
