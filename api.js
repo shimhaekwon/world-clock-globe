@@ -3,6 +3,14 @@
  * Open-Meteo and BigDataCloud API functions
  */
 
+// ===========================================
+// Rate Limiting for BigDataCloud API
+// Minimum 5-second interval between calls to prevent 400 Bad Request errors
+// ===========================================
+let lastCallTime = 0;
+let isCalling = false;
+const API_RATE_LIMIT_MS = 5000; // 5 seconds
+
 // Weather code to description mapping
 const WEATHER_CODES = {
     0: 'Clear',
@@ -66,7 +74,8 @@ export async function getWeather(latitude, longitude) {
 }
 
 /**
- * Get location information from BigDataCloud API (Reverse Geocoding)
+ * Get location information from OpenStreetMap Nominatim API (Reverse Geocoding)
+ * No GPS restriction - works on both mobile and PC
  * @param {number} latitude - Latitude of the location
  * @param {number} longitude - Longitude of the location
  * @returns {Promise<Object>} Location data
@@ -76,31 +85,69 @@ export async function getLocationInfo(latitude, longitude) {
     const lat = parseFloat(latitude.toFixed(4));
     const lng = parseFloat(longitude.toFixed(4));
     
+    const now = Date.now();
+    
+    // Rate limiting: skip if called within 5 seconds
+    if (now - lastCallTime < API_RATE_LIMIT_MS) {
+        console.log('Rate limited - skipping API call (5s interval)');
+        return { city: 'Unknown', country: '', countryCode: '' };
+    }
+    
+    // Prevent concurrent in-flight requests
+    if (isCalling) {
+        console.log('Concurrent request - skipping');
+        return { city: 'Unknown', country: '', countryCode: '' };
+    }
+    
+    isCalling = true;
+    lastCallTime = now;
+    
     // Get browser language (default to English)
     const browserLang = navigator.language || navigator.userLanguage || 'en';
     const lang = browserLang.startsWith('ko') ? 'ko' : 'en';
     
+    // OpenStreetMap Nominatim API (no GPS restriction)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1&accept-language=${lang}`;
+    
+    // Get browser language (default to English)
+    const browserLang = navigator.language || navigator.userLanguage || 'en';
+    const lang = browserLang.startsWith('ko') ? 'ko' : 'en';
+    
+<<<<<<< HEAD
     const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=${lang}`;
+=======
+    // OpenStreetMap Nominatim API (no GPS restriction)
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1&accept-language=${lang}`;
+>>>>>>> e61c5e4 (Fix: Replace BigDataCloud with OSM Nominatim + reduce auto-rotate API calls to 5s)
     
     try {
-        const response = await fetch(url);
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'WorldClockGlobe/1.0'  // OSM requires User-Agent
+            }
+        });
+        
         if (!response.ok) {
             throw new Error('Geocoding API error');
         }
+        
         const data = await response.json();
         
-        // Build location name from available data
-        let locationName = data.city || data.locality || data.principalSubdivision || data.countryName || 'Unknown';
+        // Parse Nominatim response
+        const address = data.address || {};
+        const city = address.city || address.town || address.village || address.suburb || 'Unknown';
         
         return {
-            city: locationName,
-            country: data.countryName || '',
-            countryCode: data.countryCode || '',
-            subdivision: data.principalSubdivision || ''
+            city: city,
+            country: address.country || '',
+            countryCode: address.country_code || '',
+            subdivision: address.state || address.province || ''
         };
     } catch (error) {
         console.error('Error fetching location:', error);
         return { city: 'Unknown', country: '', countryCode: '' };
+    } finally {
+        isCalling = false;
     }
 }
 
