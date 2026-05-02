@@ -314,8 +314,8 @@ function toggleAutoRotate() {
         autoRotateBtn.textContent = 'Auto Rotate: ON';
         autoRotateBtn.classList.add('active');
         
-        // Start auto-rotate updates every 5 seconds (match rate limiter)
-        startAutoRotateUpdatesV2(5000);
+        // Start auto-rotate updates every 1 second
+        startAutoRotateUpdatesV2(1000);
     } else {
         autoRotateBtn.textContent = 'Auto Rotate: OFF';
         autoRotateBtn.classList.remove('active');
@@ -425,7 +425,7 @@ function setupDragEndDetection() {
 
 // Start auto-rotate location updates (configurable interval)
 // intervalMs: 업데이트 주기 (기본 1000ms = 1초)
-function startAutoRotateUpdatesV2(intervalMs = 5000) {
+function startAutoRotateUpdatesV2(intervalMs = 1000) {
     stopAutoRotateUpdates();
     
     // Update immediately
