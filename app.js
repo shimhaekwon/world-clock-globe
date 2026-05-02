@@ -14,6 +14,11 @@ let autoRotateUpdateTimer = null;
 let currentLocation = { lat: 37.5, lng: 127.0, timezone: 'Asia/Seoul' };
 let timeUpdateInterval = null;
 let countriesGeoJSON = null;  // For country boundaries
+let admin1GeoJSON = null;     // States / provinces / metropolitan areas
+let citiesGeoJSON = null;     // Major populated places
+let countryLabels = [];
+let admin1Labels = [];
+let cityLabels = [];
 let currentZoomLevel = 'country';  // country, region, city
 let isDragging = false;  // For drag end detection (Feature 3)
 
@@ -25,8 +30,9 @@ const speedValue = document.getElementById('speed-value');
 
 // Initialize Globe
 function initGlobe() {
-    globe = new Globe(globeContainer)
-        .globeImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-blue-marble.jpg')
+    globe = new Globe(globeContainer, { rendererConfig: { antialias: true } })
+        // Self-hosted 8K daymap (Solar System Scope, 8192×4096) — sharper at close zoom
+        .globeImageUrl('img/earth-8k-daymap.jpg')
         .bumpImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/earth-topology.png')
         .backgroundImageUrl('//cdn.jsdelivr.net/npm/three-globe/example/img/night-sky.png')
         .width(globeContainer.clientWidth)
@@ -36,12 +42,26 @@ function initGlobe() {
         // Graticules (lat/lng grid lines)
         .showGraticules(true);
 
+    // Match renderer to the device's actual pixel density so polygon strokes don't alias on HiDPI/mobile
+    const renderer = globe.renderer();
+    if (renderer?.setPixelRatio) {
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+    }
+
     // Set autoRotate via controls
     globe.controls().autoRotate = autoRotate;
     globe.controls().autoRotateSpeed = 0.1;  // 1/5 of original (0.5 → 0.1)
 
+    // Limit zoom: minDistance just above globe radius (100) for closest comfortable view,
+    // maxDistance to avoid the globe shrinking to a dot
+    globe.controls().minDistance = 105;
+    globe.controls().maxDistance = 600;
+
     // Set initial view (Korea)
     globe.pointOfView({ lat: 37.5, lng: 127.0 }, 1000);
+
+    // [diag] expose for browser console inspection
+    window.globe = globe;
 
     // Handle resize
     window.addEventListener('resize', () => {
@@ -53,71 +73,156 @@ function initGlobe() {
 
 // ========== NEW FEATURES A & B ==========
 
+// Globe-surface labels must stay in latin script — globe.gl's bundled font lacks CJK glyphs
+// (renders as "???" otherwise). UI card shows native localized names instead.
+// caseHint: 'lower' for admin-1 (name_en), 'upper' for populated_places (NAME_EN).
+function pickLocalizedName(props, caseHint) {
+    if (caseHint === 'upper') {
+        return props.NAME_EN || props.NAME || props.name || 'Unknown';
+    }
+    return props.name_en || props.name || props.NAME || 'Unknown';
+}
+
+function isValidGeometry(g) {
+    if (!g?.coordinates) return false;
+    const validPair = c => Array.isArray(c) && Number.isFinite(c[0]) && Number.isFinite(c[1])
+        && Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90;
+    const checkRing = ring => Array.isArray(ring) && ring.length > 0 && ring.every(validPair);
+    if (g.type === 'Polygon') return g.coordinates.every(checkRing);
+    if (g.type === 'MultiPolygon') return g.coordinates.every(poly => Array.isArray(poly) && poly.every(checkRing));
+    if (g.type === 'Point') return validPair(g.coordinates);
+    return false;
+}
+
+function geometryCentroid(geometry) {
+    const coords = geometry?.coordinates;
+    if (!coords) return null;
+    if (geometry.type === 'Point') {
+        const [lng, lat] = coords;
+        return Number.isFinite(lng) && Number.isFinite(lat) ? { lng, lat } : null;
+    }
+    let ring;
+    if (geometry.type === 'Polygon') ring = coords[0];
+    else if (geometry.type === 'MultiPolygon') ring = coords[0]?.[0];
+    if (!ring || !ring.length) return null;
+    const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+    const lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return { lng, lat };
+}
+
 // Feature A: Initialize Country Boundaries and Labels
 // (New function - does not modify existing initGlobe)
 async function initCountryLayer() {
+    const COUNTRIES_URL = 'https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson';
+    const ADMIN1_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_1_states_provinces.geojson';
+    const CITIES_URL = 'https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_populated_places.geojson';
+
     try {
-        // Load countries GeoJSON (using datasets/geo-boundaries-world-110m)
-        const response = await fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson');
-        if (!response.ok) {
-            throw new Error(`HTTP error: ${response.status}`);
+        const [countriesRes, admin1Res, citiesRes] = await Promise.all([
+            fetch(COUNTRIES_URL),
+            fetch(ADMIN1_URL),
+            fetch(CITIES_URL),
+        ]);
+        if (!countriesRes.ok) {
+            throw new Error(`countries HTTP ${countriesRes.status}`);
         }
-        countriesGeoJSON = await response.json();
-        
-        // Add polygon layer (country boundaries)
+        countriesGeoJSON = await countriesRes.json();
+        if (admin1Res.ok) admin1GeoJSON = await admin1Res.json();
+        else console.warn('admin-1 layer unavailable:', admin1Res.status);
+        if (citiesRes.ok) citiesGeoJSON = await citiesRes.json();
+        else console.warn('cities layer unavailable:', citiesRes.status);
+
+        // Polygon layer (country boundaries)
         globe
             .polygonsData(countriesGeoJSON.features)
             .polygonCapColor(() => 'rgba(255, 255, 255, 0.05)')
             .polygonSideColor(() => 'rgba(255, 255, 255, 0.08)')
             .polygonStrokeColor(() => 'rgba(100, 200, 255, 0.4)')
             .polygonAltitude(0.002)
-            .polygonLabel(null);  // Disable hover tooltip
-        
-        // Add labels for country names (always visible on globe)
-        // Calculate centroid for each country
-        const labelData = countriesGeoJSON.features.map(f => {
-            const coords = f.geometry.coordinates;
-            let lng, lat;
-            
-            if (f.geometry.type === 'Polygon') {
-                // Use first ring's centroid
-                const ring = coords[0];
-                lng = ring.reduce((sum, c) => sum + c[0], 0) / ring.length;
-                lat = ring.reduce((sum, c) => sum + c[1], 0) / ring.length;
-            } else if (f.geometry.type === 'MultiPolygon') {
-                // Use first polygon's centroid
-                const ring = coords[0][0];
-                lng = ring.reduce((sum, c) => sum + c[0], 0) / ring.length;
-                lat = ring.reduce((sum, c) => sum + c[1], 0) / ring.length;
-            }
-            
-            return {
-                ...f,
-                lat,
-                lng,
-                name: f.properties.name || f.properties.NAME || 'Unknown'
-            };
+            .polygonLabel(null);
+
+        // Pre-compute label datasets once. Skip features with degenerate geometry
+        // (some Natural Earth features have empty rings → centroid would be NaN).
+        const buildLabel = (f, props) => {
+            const c = geometryCentroid(f.geometry);
+            if (!c) return null;
+            return { lat: c.lat, lng: c.lng, ...props };
+        };
+
+        countryLabels = countriesGeoJSON.features
+            .map(f => buildLabel(f, {
+                name: f.properties.name || f.properties.NAME || 'Unknown',
+                size: 1.0,
+                color: 'rgba(255, 255, 255, 0.9)',
+            }))
+            .filter(Boolean);
+
+        // Aggressive scalerank filter — Europe especially gets crowded at city level.
+        admin1Labels = (admin1GeoJSON?.features || [])
+            .filter(f => (f.properties?.scalerank ?? 99) <= 2)
+            .map(f => buildLabel(f, {
+                name: pickLocalizedName(f.properties, 'lower'),
+                size: 0.35,
+                color: 'rgba(180, 220, 255, 0.85)',
+            }))
+            .filter(Boolean);
+
+        cityLabels = (citiesGeoJSON?.features || [])
+            .filter(f => (f.properties?.SCALERANK ?? 99) <= 3)
+            .map(f => buildLabel(f, {
+                name: pickLocalizedName(f.properties, 'upper'),
+                size: 0.28,
+                color: 'rgba(255, 230, 150, 0.9)',
+            }))
+            .filter(Boolean);
+
+        applyLabelsForLevel(currentZoomLevel);
+
+        console.log('Country layer initialized', {
+            countries: countryLabels.length,
+            admin1: admin1Labels.length,
+            cities: cityLabels.length,
         });
-        
-        globe
-            .labelsData(labelData)
-            .labelLat(d => d.lat)
-            .labelLng(d => d.lng)
-            .labelText(d => d.name)
-            .labelSize(2)
-            .labelAltitude(0.05)
-            .labelDotRadius(0)
-            .labelColor(() => 'rgba(255, 255, 255, 0.8)')
-            .labelResolution(0);
-        
-        console.log('Country layer initialized');
-        
+
         // Setup zoom-based label switching (Feature B)
         setupZoomBasedLabels();
-        
+
     } catch (error) {
-        console.error('Error loading country data:', error);
+        console.error('Error loading map data:', error);
     }
+}
+
+function applyLabelsForLevel(level) {
+    // Country labels shrink as the camera zooms in so they stay context, not clutter
+    const COUNTRY_SCALE = { country: 1.0, region: 0.5, city: 0.3 };
+    const scaledCountry = countryLabels.map(l => ({ ...l, size: l.size * COUNTRY_SCALE[level] }));
+    let data;
+    if (level === 'country') {
+        data = scaledCountry;
+    } else if (level === 'region') {
+        data = scaledCountry.concat(admin1Labels);
+    } else {
+        // city level: drop admin-1 to reduce overlap, keep country (small) + cities only
+        data = scaledCountry.concat(cityLabels);
+    }
+    const before = data.length;
+    data = data.filter(d =>
+        Number.isFinite(d.lat) && Number.isFinite(d.lng) &&
+        Math.abs(d.lat) <= 90 && Math.abs(d.lng) <= 180 &&
+        typeof d.name === 'string' && d.name.length > 0
+    );
+    console.log(`Labels[${level}]: ${data.length} (filtered ${before - data.length})`);
+    globe
+        .labelsData(data)
+        .labelLat(d => d.lat)
+        .labelLng(d => d.lng)
+        .labelText(d => d.name)
+        .labelSize(d => d.size)
+        .labelColor(d => d.color)
+        .labelAltitude(0.05)
+        .labelDotRadius(0)
+        .labelResolution(1);
 }
 
 // Feature B: Zoom-based Label Switching
@@ -140,43 +245,27 @@ function setupZoomBasedLabels() {
     updateLabelsByZoom();
 }
 
-// Update labels based on zoom level (altitude)
+// Update labels based on zoom level (altitude).
+// globe.gl altitude: larger = camera farther (zoomed out), smaller = closer (zoomed in)
 function updateLabelsByZoom() {
     const pov = globe.pointOfView();
     if (!pov) return;
-    
+
     const altitude = pov.altitude || 1;
-    
-    // Determine zoom level based on altitude
-    // Lower altitude = more zoomed in
+
     let newZoomLevel;
     if (altitude > 1.5) {
-        newZoomLevel = 'city';      // Very zoomed in
-    } else if (altitude > 0.8) {
-        newZoomLevel = 'region';    // Zoomed in
+        newZoomLevel = 'country';
+    } else if (altitude > 0.5) {
+        newZoomLevel = 'region';
     } else {
-        newZoomLevel = 'country';   // Zoomed out
+        newZoomLevel = 'city';
     }
-    
-    // Only update if zoom level changed
+
     if (newZoomLevel !== currentZoomLevel) {
         currentZoomLevel = newZoomLevel;
         console.log('Zoom level changed to:', newZoomLevel);
-        
-        // Adjust label properties based on zoom level
-        if (newZoomLevel === 'country') {
-            // Show country names only
-            globe.labelSize(0.8);
-            globe.labelResolution(1);
-        } else if (newZoomLevel === 'region') {
-            // Show larger labels
-            globe.labelSize(1.0);
-            globe.labelResolution(2);
-        } else {
-            // city - show detailed labels
-            globe.labelSize(1.2);
-            globe.labelResolution(3);
-        }
+        applyLabelsForLevel(newZoomLevel);
     }
 }
 
@@ -228,11 +317,15 @@ async function updateLocationInfo(lat, lng) {
             getWeather(lat, lng)
         ]);
 
-        // Update card with data
-        const cityName = locationData.city || 'Unknown Location';
-        
+        // locationData === null → throttled, keep prior city label intact
+        const cityName = locationData
+            ? (locationData.cityEn
+                ? `${locationData.city} / ${locationData.cityEn}`
+                : (locationData.city || 'Unknown Location'))
+            : null;
+
         updateCardData({
-            city: cityName,
+            ...(cityName != null ? { city: cityName } : {}),
             temperature: weatherData ? `${weatherData.temperature}°C` : '--',
             weather: weatherData ? weatherData.weatherDescription : '--',
             latitude: lat.toFixed(4),
@@ -471,20 +564,29 @@ function setupEventListeners() {
         slider.addEventListener('input', function() {
             const speed = parseInt(this.value);
             speedDisplay.textContent = speed;
-            
+            const card = document.getElementById('info-card');
+            const toggleBtn = document.getElementById('toggle-card');
+
             if (speed === 0) {
-                // Turn off auto-rotate
+                // Stop rotating: expand card and refresh once for the current center
                 autoRotate = false;
                 globe.controls().autoRotate = false;
                 stopAutoRotateUpdates();
+                card.classList.remove('collapsed');
+                if (toggleBtn) toggleBtn.textContent = '▼';
+                const center = globe.pointOfView();
+                if (center) {
+                    updateLocationInfo(center.lat, center.lng);
+                }
             } else {
-                // Turn on auto-rotate with selected speed
+                // Rotate: skip API polling (avoids hammering Nominatim) and collapse card to "Rotating"
                 autoRotate = true;
                 globe.controls().autoRotate = true;
                 globe.controls().autoRotateSpeed = speed * 0.5;
-                
-                // Start auto-rotate updates
-                startAutoRotateUpdates();
+                stopAutoRotateUpdates();
+                card.classList.add('collapsed');
+                if (toggleBtn) toggleBtn.textContent = '▶';
+                document.getElementById('location-name').textContent = 'Rotating';
             }
         });
     }

@@ -1,5 +1,5 @@
 {
-  "name": "World Clock Globe",
+  "name": "World Clock Climate",
   "short_name": "WorldClock",
   "description": "3D globe showing time and weather for any location",
   "start_url": "./index.html",

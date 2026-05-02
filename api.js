@@ -1,7 +1,22 @@
 /**
  * World Clock Globe - API Module
- * Open-Meteo and BigDataCloud API functions
+ * Open-Meteo (weather) and OSM Nominatim (reverse geocoding)
  */
+
+// ~11km grid cache key — collapses repeated lookups while panning a city
+const gridKey = (lat, lng) => `${lat.toFixed(1)},${lng.toFixed(1)}`;
+
+const locationCache = new Map();
+const locationInFlight = new Map();
+
+const weatherCache = new Map();
+const weatherInFlight = new Map();
+const WEATHER_TTL_MS = 10 * 60 * 1000;
+
+// Global throttle — block bursts that could trip provider rate limits
+const REQUEST_MIN_INTERVAL_MS = 2000;
+let lastLocationCallAt = 0;
+let lastWeatherCallAt = 0;
 
 // Weather code to description mapping
 const WEATHER_CODES = {
@@ -35,73 +50,112 @@ const WEATHER_CODES = {
     99: 'Thunderstorm with Heavy Hail'
 };
 
-/**
- * Get weather information from Open-Meteo API
- * @param {number} latitude - Latitude of the location
- * @param {number} longitude - Longitude of the location
- * @returns {Promise<Object>} Weather data
- */
 export async function getWeather(latitude, longitude) {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`;
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Weather API error');
-        }
-        const data = await response.json();
-        
-        const weather = data.current_weather;
-        return {
-            temperature: weather.temperature,
-            weatherCode: weather.weathercode,
-            weatherDescription: WEATHER_CODES[weather.weathercode] || 'Unknown',
-            windSpeed: weather.windspeed,
-            isDay: weather.is_day === 1
-        };
-    } catch (error) {
-        console.error('Error fetching weather:', error);
-        return null;
+    const key = gridKey(latitude, longitude);
+    const now = Date.now();
+    const cached = weatherCache.get(key);
+    if (cached && now - cached.timestamp < WEATHER_TTL_MS) {
+        return cached.data;
     }
+    if (weatherInFlight.has(key)) {
+        return weatherInFlight.get(key);
+    }
+    if (now - lastWeatherCallAt < REQUEST_MIN_INTERVAL_MS) {
+        return cached?.data ?? null;
+    }
+    lastWeatherCallAt = now;
+
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true`;
+
+    const promise = (async () => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Weather API error');
+            }
+            const data = await response.json();
+            const w = data.current_weather;
+            const result = {
+                temperature: w.temperature,
+                weatherCode: w.weathercode,
+                weatherDescription: WEATHER_CODES[w.weathercode] || 'Unknown',
+                windSpeed: w.windspeed,
+                isDay: w.is_day === 1
+            };
+            weatherCache.set(key, { data: result, timestamp: Date.now() });
+            return result;
+        } catch (error) {
+            console.error('Error fetching weather:', error);
+            return null;
+        } finally {
+            weatherInFlight.delete(key);
+        }
+    })();
+
+    weatherInFlight.set(key, promise);
+    return promise;
 }
 
-/**
- * Get location information from BigDataCloud API (Reverse Geocoding)
- * @param {number} latitude - Latitude of the location
- * @param {number} longitude - Longitude of the location
- * @returns {Promise<Object>} Location data
- */
+const EMPTY_LOCATION = { city: 'Unknown', cityEn: '', country: '', countryCode: '', subdivision: '' };
+
 export async function getLocationInfo(latitude, longitude) {
-    // Round coordinates to avoid precision issues
+    const key = gridKey(latitude, longitude);
+    if (locationCache.has(key)) {
+        return locationCache.get(key);
+    }
+    if (locationInFlight.has(key)) {
+        return locationInFlight.get(key);
+    }
+    const now = Date.now();
+    if (now - lastLocationCallAt < REQUEST_MIN_INTERVAL_MS) {
+        return null;  // signal caller to skip UI update rather than overwrite with 'Unknown'
+    }
+    lastLocationCallAt = now;
+
     const lat = parseFloat(latitude.toFixed(4));
     const lng = parseFloat(longitude.toFixed(4));
-    
-    // Get browser language (default to English)
-    const browserLang = navigator.language || navigator.userLanguage || 'en';
-    const lang = browserLang.startsWith('ko') ? 'ko' : 'en';
-    
-    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=${lang}`;
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error('Geocoding API error');
+
+    // Nominatim: omit accept-language → returns names in local language by default,
+    // namedetails=1 → includes name:en for english fallback display
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10&addressdetails=1&namedetails=1`;
+
+    const promise = (async () => {
+        try {
+            const response = await fetch(url, {
+                headers: { 'Accept-Language': '' }
+            });
+            if (!response.ok) {
+                throw new Error('Geocoding API error');
+            }
+            const data = await response.json();
+            const address = data.address || {};
+            const namedetails = data.namedetails || {};
+            // Stop at city/town/village — drop suburb so we don't surface 동/면 units
+            const cityLocal = address.city || address.town || address.village
+                || address.state || address.country || 'Unknown';
+            // namedetails['name:en'] reflects the result element (often a sub-area like 동/면).
+            // Only use it when result is the city itself, otherwise we'd show "사천시 / Seopo-myeon" mismatch.
+            const isResultCityLevel = data.name && data.name === cityLocal;
+            const cityEn = isResultCityLevel ? (namedetails['name:en'] || '') : '';
+            const result = {
+                city: cityLocal,
+                cityEn: (cityEn && cityEn !== cityLocal) ? cityEn : '',
+                country: address.country || '',
+                countryCode: (address.country_code || '').toUpperCase(),
+                subdivision: address.state || address.province || ''
+            };
+            locationCache.set(key, result);
+            return result;
+        } catch (error) {
+            console.error('Error fetching location:', error);
+            return { ...EMPTY_LOCATION };
+        } finally {
+            locationInFlight.delete(key);
         }
-        const data = await response.json();
-        
-        // Build location name from available data
-        let locationName = data.city || data.locality || data.principalSubdivision || data.countryName || 'Unknown';
-        
-        return {
-            city: locationName,
-            country: data.countryName || '',
-            countryCode: data.countryCode || '',
-            subdivision: data.principalSubdivision || ''
-        };
-    } catch (error) {
-        console.error('Error fetching location:', error);
-        return { city: 'Unknown', country: '', countryCode: '' };
-    }
+    })();
+
+    locationInFlight.set(key, promise);
+    return promise;
 }
 
 /**
