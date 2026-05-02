@@ -11,7 +11,7 @@ let autoRotate = false;
 let autoRotateSpeed = 0;  // 0-20, default 0 (0 = off)
 let debounceTimer = null;
 let autoRotateUpdateTimer = null;
-let currentLocation = detectInitialLocation();
+let currentLocation = { lat: 0, lng: 0, timezone: 'UTC' };  // initialized in initGlobe()
 let timeUpdateInterval = null;
 let countriesGeoJSON = null;  // For country boundaries
 let admin1GeoJSON = null;     // States / provinces / metropolitan areas
@@ -121,6 +121,7 @@ const speedValue = document.getElementById('speed-value');
 
 // Initialize Globe
 function initGlobe() {
+    currentLocation = detectInitialLocation();
     globe = new Globe(globeContainer, { rendererConfig: { antialias: true } })
         // Self-hosted 8K daymap (Solar System Scope, 8192×4096) — sharper at close zoom
         .globeImageUrl('img/earth-8k-daymap.jpg')
